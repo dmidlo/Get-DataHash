@@ -106,7 +106,6 @@ Class DataHash {
     static hidden [object] _normalizeDict(
         [object]$Dictionary, 
         [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [string]$ParentPath = "",
         [System.Collections.Generic.HashSet[object]]$Visited
     ) {
         if ($Visited.Contains($Dictionary)) { return "[CIRCULAR_REF]" }
@@ -116,23 +115,23 @@ Class DataHash {
                     ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) -or
                     ($Dictionary -is [System.Collections.Generic.SortedDictionary[object,object]])
 
-        $normalizedDict = if ($isOrdered) { [ordered]@{} } else { @{} }
+        $normalizedDict = [Ordered]@{}
 
-        # Convert PSCustomObject to Dictionary
         if ($Dictionary -is [PSCustomObject]) {
-            $Dictionary = $Dictionary.PSObject.Properties |
-                        Sort-Object Name |  # Ensure deterministic order
-                        Where-Object { -not $IgnoreFields.Contains($_.Name) } | 
-                        ForEach-Object { @{ $_.Name = $_.Value } }
+            $tempDict = @{}
+            foreach ($property in $Dictionary.PSObject.Properties | Sort-Object Name) {
+                if (-not $IgnoreFields.Contains($property.Name)) {
+                    $tempDict[$property.Name] = $property.Value
+                }
+            }
+            $Dictionary = $tempDict
         }
 
-        # Process Keys in Deterministic Order
         $keys = if ($isOrdered) { $Dictionary.Keys } else { $Dictionary.Keys | Sort-Object { $_.ToString() } }
 
         foreach ($key in $keys) {
             if (-not $IgnoreFields.Contains($key)) {
-                $currentPath = if ($ParentPath -eq "") { $key } else { "$ParentPath.$key" }
-                $normalizedDict[$key] = [DataHash]::_normalizeValue($Dictionary[$key], $IgnoreFields, $currentPath, $Visited)
+                $normalizedDict[$key] = [DataHash]::_normalizeValue($Dictionary[$key], $IgnoreFields, $Visited)
             }
         }
 
@@ -140,10 +139,11 @@ Class DataHash {
     }
 
 
+
+
     static hidden [object] _normalizeList(
         [object]$List, 
         [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [string]$ParentPath = "",
         [System.Collections.Generic.HashSet[object]]$Visited
     ) {
         if ($Visited.Contains($List)) { return "[CIRCULAR_REF]" }
@@ -156,7 +156,7 @@ Class DataHash {
         $normalizedList = @()
 
         foreach ($item in $List) {
-            $normalizedList += [DataHash]::_normalizeValue($item, $IgnoreFields, $ParentPath, $Visited)
+            $normalizedList += [DataHash]::_normalizeValue($item, $IgnoreFields, $Visited)
         }
 
         # Sort only if unordered
@@ -170,15 +170,14 @@ Class DataHash {
     static hidden [object] _normalizeValue(
         [object]$Value, 
         [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [string]$ParentPath = "",
         [System.Collections.Generic.HashSet[object]]$Visited
     ) {
         if ($null -eq $Value) { return "[NULL]" }
         if ($Value -is [System.Collections.IDictionary] -or $Value -is [PSCustomObject]) {
-            return [DataHash]::_normalizeDict($Value, $IgnoreFields, $ParentPath, $Visited)
+            return [DataHash]::_normalizeDict($Value, $IgnoreFields, $Visited)
         }
         if ([DataHash]::_isEnumerable($Value)) {
-            return [DataHash]::_normalizeList($Value, $IgnoreFields, $ParentPath, $Visited)
+            return [DataHash]::_normalizeList($Value, $IgnoreFields, $Visited)
         }
         if ($Value -is [double] -or $Value -is [float]) {
             return [DataHash]::_normalizeFloat($Value)
