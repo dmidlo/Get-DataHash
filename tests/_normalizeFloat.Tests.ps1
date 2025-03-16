@@ -51,9 +51,9 @@ Describe "DataHash::_normalizeFloat" {
     }
 
     It "should consistently return the same result for the same input value" {
-        $input = 123.456
-        $result1 = [DataHash]::_normalizeFloat($input)
-        $result2 = [DataHash]::_normalizeFloat($input)
+        $inputFloat = 123.456
+        $result1 = [DataHash]::_normalizeFloat($inputFloat)
+        $result2 = [DataHash]::_normalizeFloat($inputFloat)
         $result1 | Should -BeExactly $result2
     }
 }
