@@ -3,7 +3,7 @@ using module '.\private\types\DataHash.psm1'
 
 # Define the types to export with type accelerators.
 $ExportableTypes =@(
-    [DataHash]
+    [DataHash], [DataHashAlgorithmType]
 )
 # Get the internal TypeAccelerators class to use its static methods.
 $TypeAcceleratorsClass = [psobject].Assembly.GetType(

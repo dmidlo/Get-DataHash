@@ -3,7 +3,7 @@
 $LiteDBPath = [System.IO.Path]::Combine("private", "types", "LiteDB.dll")
 $ImportPrivateModulesPath = [System.IO.Path]::Combine("private", "Import-PrivateModules.ps1")
 
-if (-Not ([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.Location -eq $assemblyPath })) {
+if (-Not (([System.AppDomain]::CurrentDomain.GetAssemblies()).Where({ $_.Location -eq $assemblyPath }))) {
     Add-Type -Path $LiteDBPath
 }
 
@@ -23,16 +23,37 @@ if (-Not ([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.
     - Uses SHA256 by default but supports configurable hash algorithms.
 #>
 
+enum DataHashAlgorithmType {
+    MD5
+    SHA1
+    SHA256
+    SHA384
+    SHA512
+}
+
 [NoRunspaceAffinity()]
 Class DataHash {
     [string]$Hash
+    [System.Collections.Generic.HashSet[string]]$IgnoreFields
+    [DataHashAlgorithmType]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
+    hidden [System.Collections.Generic.HashSet[object]]$Visited
+
+    DataHash() {
+        try {
+            $this.ResetVisited()
+            $this.InitializeIgnoreFields()
+        } catch {
+            throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
+        }
+    }
 
     DataHash(
         [Object]$InputObject
     ) {
         try {
-            $IgnoreFields = [System.Collections.Generic.HashSet[string]]::new()
-            $this.Hash = [DataHash]::Normalize($InputObject, $IgnoreFields, "SHA256")
+            $this.ResetVisited()
+            $this.InitializeIgnoreFields()
+            $this.Hash = $this.Generate($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
@@ -43,7 +64,9 @@ Class DataHash {
         [System.Collections.Generic.HashSet[string]]$IgnoreFields
     ) {
         try {
-            $this.Hash = [DataHash]::Normalize($InputObject, $IgnoreFields, "SHA256")
+            $this.ResetVisited()
+            $this.IgnoreFields = $IgnoreFields
+            $this.Hash = $this.Generate($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
@@ -52,67 +75,83 @@ Class DataHash {
     DataHash(
         [Object]$InputObject,
         [System.Collections.Generic.HashSet[string]]$IgnoreFields, 
-        [string]$HashAlgorithm
-    ) {
+        [DataHashAlgorithmType]$HashAlgorithm
+    ) { 
         try {
-            $this.Hash = [DataHash]::Normalize($InputObject, $IgnoreFields, $HashAlgorithm)
+            $this.ResetVisited()
+            $this.IgnoreFields = $IgnoreFields
+            $this.Hash = $this.Generate($InputObject, $HashAlgorithm)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
     }
 
-    static hidden [string] Normalize(
+    hidden [string] Generate(
         [object]$InputObject, 
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields, 
-        [string]$HashAlgorithm = "SHA256"
+        [DataHashAlgorithmType]$HashAlgorithm 
     ) {
-        return [DataHash]::_hashObject($InputObject, $IgnoreFields, $HashAlgorithm)
-    }
-
-    static hidden [string] _hashObject(
-        [object]$InputObject, 
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [string]$HashAlgorithm
-    ) {
+        $this.ResetVisited()
         if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
-
-        $visited = [System.Collections.Generic.HashSet[object]]::new()
+        
+        $memStream = [System.IO.MemoryStream]::new()
 
         if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
-            return [DataHash]::_hashDict($InputObject, $IgnoreFields, $HashAlgorithm, $visited)
+                $normalizedDict = $this._normalizeDict($InputObject)
+                
+                [DataHash]::_serializeToBsonStream($memStream, $normalizedDict)
+                $memStream.Position = 0
+                return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
         }
 
         if ([DataHash]::_isEnumerable($InputObject)) {
-            return [DataHash]::_hashList($InputObject, $IgnoreFields, $HashAlgorithm, $visited)
+                $normalizedList = $this._normalizeList($InputObject)
+            
+                [DataHash]::_serializeToBsonStream($memStream, $normalizedList)
+                $memStream.Position = 0
+                return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
+            }
+        
+        if ([DataHash]::_isScalar($InputObject)) {
+            [DataHash]::_serializeToBsonStream($memStream, $InputObject)
+            $memStream.Position = 0
+            return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
         }
 
-        return [DataHash]::_computeHash_Streaming($InputObject.ToString(), $HashAlgorithm)
+        throw "[DataHash]::Generate: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
     }
 
-    static hidden [string] _hashDict(
-        [object]$Dictionary, 
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [string]$HashAlgorithm,
-        [System.Collections.Generic.HashSet[object]]$Visited
-    ) {
-        $normalizedDict = [DataHash]::_normalizeDict($Dictionary, $IgnoreFields, "", $Visited)
-        
-        $memStream = [System.IO.MemoryStream]::new()
-        [DataHash]::_serializeToBsonStream($memStream, $normalizedDict)
-        $memStream.Position = 0
-        return [DataHash]::_computeHash_Streaming($memStream, $HashAlgorithm)
+    hidden [object] _normalizeValue([object]$Value) {
+        if ($null -eq $Value) { return "[NULL]" }
+
+        if ([DataHash]::_isScalar($Value)) {
+            if ($Value -is [double] -or $Value -is [float]) {
+                return [DataHash]::_normalizeFloat($Value)
+            }
+            return $Value
+        }
+
+        if ($Value -is [System.Collections.IDictionary] -or $Value -is [PSCustomObject]) {
+            return $this._normalizeDict($Value)
+        }
+
+        if ([DataHash]::_isEnumerable($Value)) {
+            return $this._normalizeList($Value)
+        }
+
+        # If an unsupported type sneaks in here, provide a clear placeholder:
+        return "[UNSUPPORTED_TYPE:$($Value.GetType().FullName)]"
     }
 
-    static hidden [object] _normalizeDict(
-        [object]$Dictionary, 
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [System.Collections.Generic.HashSet[object]]$Visited
-    ) {
-        if ($Visited.Contains($Dictionary)) { return "[CIRCULAR_REF]" }
-        $Visited.Add($Dictionary)
+    hidden [object] _normalizeDict([object]$Dictionary) {
+        foreach ($visitedItem in $this.Visited) {
+            if ([object]::ReferenceEquals($visitedItem, $Dictionary)) { 
+                return "[CIRCULAR_REF]"
+            }
+        }
 
-        $isOrdered = ($Dictionary -is [ordered]) -or
-                    ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) -or
+        $this.Visited.Add($Dictionary)
+
+        $isOrdered = ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) -or
                     ($Dictionary -is [System.Collections.Generic.SortedDictionary[object,object]])
 
         $normalizedDict = [Ordered]@{}
@@ -120,7 +159,7 @@ Class DataHash {
         if ($Dictionary -is [PSCustomObject]) {
             $tempDict = @{}
             foreach ($property in $Dictionary.PSObject.Properties | Sort-Object Name) {
-                if (-not $IgnoreFields.Contains($property.Name)) {
+                if (-not $this.IgnoreFields.Contains($property.Name)) {
                     $tempDict[$property.Name] = $property.Value
                 }
             }
@@ -130,65 +169,56 @@ Class DataHash {
         $keys = if ($isOrdered) { $Dictionary.Keys } else { $Dictionary.Keys | Sort-Object { $_.ToString() } }
 
         foreach ($key in $keys) {
-            if (-not $IgnoreFields.Contains($key)) {
-                $normalizedDict[$key] = [DataHash]::_normalizeValue($Dictionary[$key], $IgnoreFields, $Visited)
+            if (-not $this.IgnoreFields.Contains($key)) {
+                $normalizedDict[$key] = $this._normalizeValue($Dictionary[$key])
             }
         }
 
         return $normalizedDict
     }
 
+    hidden [object] _normalizeList([object]$List) {
+        try {
+            if ([DataHash]::_CanFormCircularReferences($List)) {
+                foreach ($visitedItem in $this.Visited) {
+                    if ([object]::ReferenceEquals($visitedItem, $List)) { 
+                        return "[CIRCULAR_REF]"
+                    }
+                }
+                $this.Visited.Add($List)
+            }
 
 
+            $isOrdered = ($List -is [System.Collections.IList]) -or
+                        ($List -is [System.Collections.Generic.Queue[object]]) -or
+                        ($List -is [System.Collections.Generic.Stack[object]])
 
-    static hidden [object] _normalizeList(
-        [object]$List, 
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [System.Collections.Generic.HashSet[object]]$Visited
-    ) {
-        if ($Visited.Contains($List)) { return "[CIRCULAR_REF]" }
-        $Visited.Add($List)
+            $normalizedList = [System.Collections.ArrayList]::new()
 
-        $isOrdered = ($List -is [System.Collections.IList]) -or
-                    ($List -is [System.Collections.Generic.Queue[object]]) -or
-                    ($List -is [System.Collections.Generic.Stack[object]])
+            foreach ($item in $List) {
+                $normalizedItem = $this._normalizeValue($item)
+        
+                $normalizedList.Add($normalizedItem)
+            }
 
-        $normalizedList = @()
+            # Sort only if unordered
+            if (-not $isOrdered) {
+                $normalizedList = $normalizedList | Sort-Object { $_.ToString() }
+            }
 
-        foreach ($item in $List) {
-            $normalizedList += [DataHash]::_normalizeValue($item, $IgnoreFields, $Visited)
+            return $normalizedList
         }
-
-        # Sort only if unordered
-        if (-not $isOrdered) {
-            $normalizedList = $normalizedList | Sort-Object { $_.ToString() }
+        catch {
+            $exception = $_.Exception
+            Write-Host "Exception Type: $($exception.GetType().FullName)"
+            Write-Host "Message: $($exception.Message)"
+            Write-Host "Stack Trace:`n$($exception.StackTrace)"
+            throw
         }
-
-        return $normalizedList
     }
 
-    static hidden [object] _normalizeValue(
-        [object]$Value, 
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields,
-        [System.Collections.Generic.HashSet[object]]$Visited
-    ) {
-        if ($null -eq $Value) { return "[NULL]" }
-        if ($Value -is [System.Collections.IDictionary] -or $Value -is [PSCustomObject]) {
-            return [DataHash]::_normalizeDict($Value, $IgnoreFields, $Visited)
-        }
-        if ([DataHash]::_isEnumerable($Value)) {
-            return [DataHash]::_normalizeList($Value, $IgnoreFields, $Visited)
-        }
-        if ($Value -is [double] -or $Value -is [float]) {
-            return [DataHash]::_normalizeFloat($Value)
-        }
-        return $Value
-    }
-
-    static hidden [string] _normalizeFloat(
-        [double]$Value
-    ) {
-        return [BitConverter]::ToString([BitConverter]::GetBytes($Value))
+    static hidden [string] _normalizeFloat([double]$Value) {
+        return $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
     static hidden [void] _serializeToBsonStream(
@@ -200,19 +230,18 @@ Class DataHash {
         # Ensure PowerShell object is correctly mapped to BSON format
         $bsonDocument = [LiteDB.BsonMapper]::Global.ToDocument($InputObject)
 
-        # Create a BinaryWriter to stream BSON data
-        $binaryWriter = [System.IO.BinaryWriter]::new($Stream)
+        # Serialize BsonDocument to Byte Array
+        $serializedBytes = [LiteDB.BsonSerializer]::Serialize($bsonDocument)
 
-        # Serialize BSON Document to Stream
-        [LiteDB.BsonSerializer]::Serialize($binaryWriter, $bsonDocument)
-
-        # Ensure buffer is flushed
-        $binaryWriter.Flush()
+        # Write the byte array to the stream
+        $Stream.Write($serializedBytes, 0, $serializedBytes.Length)
+        $Stream.Flush()  # Ensure all data is written
     }
+
 
     static hidden [string] _computeHash_Streaming(
         [System.IO.Stream]$Stream,
-        [string]$Algorithm
+        [DataHashAlgorithmType]$Algorithm
     ) {
         $hasher = [System.Security.Cryptography.HashAlgorithm]::Create($Algorithm)
         if ($null -eq $hasher) { throw "[DataHash]::_computeHash_Streaming: Invalid hash algorithm '$Algorithm'" }
@@ -230,7 +259,7 @@ Class DataHash {
         }
 
         # Finalize Hash Computation
-        $hasher.TransformFinalBlock(@(), 0, 0)
+        $hasher.TransformFinalBlock([byte[]]::new(0), 0, 0)
 
         # Convert hash to hexadecimal string
         return [BitConverter]::ToString($hasher.Hash) -replace '-', ''
@@ -242,11 +271,40 @@ Class DataHash {
         return ($Value -is [System.Collections.IEnumerable]) -and ($Value -isnot [string])
     }
 
+    static hidden [bool] _isScalar([object]$Value) {
+        return $Value -is [ValueType] -or $Value -is [string]
+    }
+
+    static hidden [bool] _CanFormCircularReferences([object]$Value) {
+        return ($Value -is [System.Collections.IEnumerable]) -and
+            ($Value -isnot [string]) -and
+            ($Value -isnot [System.Array]) -and
+            ($Value -isnot [System.Collections.Generic.HashSet[object]]) -and
+            ($Value -isnot [System.Collections.Generic.SortedSet[object]])
+    }
+
+    hidden [void] ResetVisited() {
+        if ($null -eq $this.Visited) {
+            $this.Visited = [System.Collections.Generic.HashSet[object]]::new()
+        } else {
+            $this.Visited.Clear()
+        }
+    }
+
+    hidden [void] InitializeIgnoreFields() {
+        if ($null -eq $this.IgnoreFields) {
+            $this.IgnoreFields = [System.Collections.Generic.HashSet[string]]::new()
+        } else {
+            $this.IgnoreFields.Clear()
+        }
+    }
+
+
     [bool] Equals(
         [object]$Other
     ) {
         if ($Other -is [DataHash]) {
-            return [DataHash]::op_Equality($this, $Other)
+            return $this.op_Equality($this, $Other)
         }
         if ($Other -is [string]) {
             return $this.Hash -eq $Other
