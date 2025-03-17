@@ -47,9 +47,7 @@ Class DataHash {
         }
     }
 
-    DataHash(
-        [Object]$InputObject
-    ) {
+    DataHash([Object]$InputObject) {
         try {
             $this.ResetVisited()
             $this.InitializeIgnoreFields()
@@ -59,10 +57,7 @@ Class DataHash {
         }
     }
 
-    DataHash(
-        [Object]$InputObject,
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields
-    ) {
+    DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields) {
         try {
             $this.ResetVisited()
             $this.IgnoreFields = $IgnoreFields
@@ -218,18 +213,8 @@ Class DataHash {
     }
 
     static hidden [string] _normalizeFloat([double]$Value) {
-        $str = $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
-        $decimalPos = $str.IndexOf('.')
-
-        # Only truncate if there are more than 17 digits after the decimal
-        if ($decimalPos -ge 0) {
-            $maxLength = [math]::Min($str.Length, $decimalPos + 16)  # Ensure we don’t exceed length
-            return $str.Substring(0, $maxLength)
-        }
-
-        return $str
+        return $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
     }
-
 
 
     static hidden [void] _serializeToBsonStream(
