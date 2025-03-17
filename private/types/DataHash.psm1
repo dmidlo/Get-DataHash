@@ -35,7 +35,7 @@ enum DataHashAlgorithmType {
 Class DataHash {
     [string]$Hash
     [System.Collections.Generic.HashSet[string]]$IgnoreFields
-    [DataHashAlgorithmType]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
+    [string]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
     hidden [System.Collections.Generic.HashSet[object]]$Visited
 
     DataHash() {
@@ -70,49 +70,56 @@ Class DataHash {
     DataHash(
         [Object]$InputObject,
         [System.Collections.Generic.HashSet[string]]$IgnoreFields, 
-        [DataHashAlgorithmType]$HashAlgorithm
+        [string]$HashAlgorithm
     ) { 
         try {
             $this.ResetVisited()
             $this.IgnoreFields = $IgnoreFields
+
+            if ([System.Enum]::IsDefined([DataHashAlgorithmType], $HashAlgorithm)) {
+                $this.HashAlgorithm = $HashAlgorithm
+            } else {
+                throw  "Invalid Hash Type: $hashAlgorithm"
+            }
+            
             $this.Hash = $this.Generate($InputObject, $HashAlgorithm)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
     }
 
-    hidden [string] Generate(
+    [string] Generate(
         [object]$InputObject, 
-        [DataHashAlgorithmType]$HashAlgorithm 
+        [string]$HashAlgorithm 
     ) {
         $this.ResetVisited()
         if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
         
-        $memStream = [System.IO.MemoryStream]::new()
 
         if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
                 $normalizedDict = $this._normalizeDict($InputObject)
-                
-                [DataHash]::_serializeToBsonStream($memStream, $normalizedDict)
-                $memStream.Position = 0
-                return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
+                return $this._hash($normalizedDict)
         }
 
         if ([DataHash]::_isEnumerable($InputObject)) {
                 $normalizedList = $this._normalizeList($InputObject)
-            
-                [DataHash]::_serializeToBsonStream($memStream, $normalizedList)
-                $memStream.Position = 0
-                return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
+                return $this._hash($normalizedList)
             }
         
         if ([DataHash]::_isScalar($InputObject)) {
-            [DataHash]::_serializeToBsonStream($memStream, $InputObject)
-            $memStream.Position = 0
-            return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
+            return $this._hash($InputObject)
         }
 
         throw "[DataHash]::Generate: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
+    }
+
+    hidden [object] _hash (
+        [object]$InputObject
+    ){
+        $memStream = [System.IO.MemoryStream]::new()
+        [DataHash]::_serializeToBsonStream($memStream, $InputObject)
+        $memStream.Position = 0
+        return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
     }
 
     hidden [object] _normalizeValue([object]$Value) {
@@ -146,20 +153,20 @@ Class DataHash {
 
         $this.Visited.Add($Dictionary)
 
-        $isOrdered = ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) -or
-                    ($Dictionary -is [System.Collections.Generic.SortedDictionary[object,object]])
-
         $normalizedDict = [Ordered]@{}
 
         if ($Dictionary -is [PSCustomObject]) {
-            $tempDict = @{}
+            # Directly populate OrderedDictionary without extra copying
             foreach ($property in $Dictionary.PSObject.Properties | Sort-Object Name) {
                 if (-not $this.IgnoreFields.Contains($property.Name)) {
-                    $tempDict[$property.Name] = $property.Value
+                    $normalizedDict[$property.Name] = $this._normalizeValue($property.Value)
                 }
             }
-            $Dictionary = $tempDict
+            return $normalizedDict
         }
+
+        $isOrdered = ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) -or
+                    ($Dictionary -is [System.Collections.Generic.SortedDictionary[object,object]])
 
         $keys = if ($isOrdered) { $Dictionary.Keys } else { $Dictionary.Keys | Sort-Object { $_.ToString() } }
 
@@ -171,6 +178,7 @@ Class DataHash {
 
         return $normalizedDict
     }
+
 
     hidden [object] _normalizeList([object]$List) {
         try {
@@ -216,7 +224,6 @@ Class DataHash {
         return $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
-
     static hidden [void] _serializeToBsonStream(
         [System.IO.Stream]$Stream,
         [object]$InputObject
@@ -234,10 +241,9 @@ Class DataHash {
         $Stream.Flush()  # Ensure all data is written
     }
 
-
     static hidden [string] _computeHash_Streaming(
         [System.IO.Stream]$Stream,
-        [DataHashAlgorithmType]$Algorithm
+        [string]$Algorithm
     ) {
         $hasher = [System.Security.Cryptography.HashAlgorithm]::Create($Algorithm)
         if ($null -eq $hasher) { throw "[DataHash]::_computeHash_Streaming: Invalid hash algorithm '$Algorithm'" }
@@ -295,7 +301,6 @@ Class DataHash {
         }
     }
 
-
     [bool] Equals(
         [object]$Other
     ) {
@@ -316,13 +321,6 @@ Class DataHash {
         return $a.Hash -eq $b.Hash
     }
 
-    static [bool] op_Inequality(
-        [DataHash]$a, 
-        [DataHash]$b
-    ) {
-        return -not ([DataHash]::op_Equality($a, $b))
-    }
-
     static [bool] op_Equality(
         [DataHash]$a, 
         [string]$b
@@ -337,6 +335,13 @@ Class DataHash {
     ) {
         if ($null -eq $b) { return $false }
         return $a -eq $b.Hash
+    }
+
+    static [bool] op_Inequality(
+        [DataHash]$a, 
+        [DataHash]$b
+    ) {
+        return -not ([DataHash]::op_Equality($a, $b))
     }
 
     static [bool] op_Inequality(

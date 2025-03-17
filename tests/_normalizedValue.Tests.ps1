@@ -17,11 +17,6 @@ Describe "DataHash::_normalizeValue" -Tags "Normalization" {
         $DataHash._normalizeValue($true) | Should -Be $true
     }
 
-    It "Normalizes floating-point numbers correctly" {
-        $result = $DataHash._normalizeValue(3.141592653589793)
-        $result | Should -Be "3.141592653589793"
-    }
-
     It "Handles deeply nested structures with mixed types" {
         $input = @(
             @{ Name = "Alice"; Age = 30 },

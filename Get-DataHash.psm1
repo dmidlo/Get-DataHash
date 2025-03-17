@@ -1,6 +1,9 @@
 using module '.\private\types\LiteDB.dll'
 using module '.\private\types\DataHash.psm1'
 
+
+. './private/types/Mappers/RegisterMappers.ps1'
+
 # Define the types to export with type accelerators.
 $ExportableTypes =@(
     [DataHash], [DataHashAlgorithmType]
