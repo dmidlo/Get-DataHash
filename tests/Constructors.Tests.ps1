@@ -60,17 +60,17 @@ Describe "DataHash Constructors" {
         $hashEmptyArray.Hash | Should -Not -BeNullOrEmpty
     }
 
-    # It "Handles complex nested objects correctly" {
-    #     $hashComplex1 = [DataHash]::new($complexObject)
-    #     $hashComplex2 = [DataHash]::new($complexObject)
+    It "Handles complex nested objects correctly" {
+        $hashComplex1 = [DataHash]::new($complexObject)
+        $hashComplex2 = [DataHash]::new($complexObject)
 
-    #     $hashComplex1.Hash | Should -Be $hashComplex2.Hash  # Same data, should match
-    # }
+        $hashComplex1.Hash | Should -Be $hashComplex2.Hash  # Same data, should match
+    }
 
-    # It "Detects circular references and does not crash" {
-    #     $circularObject = @{ Name = "Bob" }
-    #     $circularObject["Self"] = $circularObject  # Introduce circular reference
+    It "Detects circular references and does not crash" {
+        $circularObject = @{ Name = "Bob" }
+        $circularObject["Self"] = $circularObject  # Introduce circular reference
 
-    #     { [DataHash]::new($circularObject) } | Should -Not -Throw
-    # }
+        { [DataHash]::new($circularObject) } | Should -Not -Throw
+    }
 }

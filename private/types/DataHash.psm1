@@ -88,38 +88,42 @@ Class DataHash {
         }
     }
 
-    [string] Generate(
-        [object]$InputObject, 
-        [string]$HashAlgorithm 
-    ) {
+    [string] Generate([object]$InputObject, [string]$HashAlgorithm) {
         $this.ResetVisited()
         if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
-        
 
         if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
                 $normalizedDict = $this._normalizeDict($InputObject)
-                return $this._hash($normalizedDict)
+                return [DataHash]::_hash($normalizedDict, $this.HashAlgorithm)
         }
 
         if ([DataHash]::_isEnumerable($InputObject)) {
                 $normalizedList = $this._normalizeList($InputObject)
-                return $this._hash($normalizedList)
+                return [DataHash]::_hash($normalizedList, $this.HashAlgorithm)
             }
         
         if ([DataHash]::_isScalar($InputObject)) {
-            return $this._hash($InputObject)
+            return [DataHash]::_hash($InputObject)
         }
 
         throw "[DataHash]::Generate: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
     }
 
-    hidden [object] _hash (
-        [object]$InputObject
-    ){
+    static hidden [object] _hash ([object]$InputObject, [string]$Algorithm){
+
+        $dict = $null
+
+        if (-not [DataHash]::_CanSerializeToBSON($InputObject)) {
+            $dict = @{_value = $InputObject}
+        }
+        else {
+            $dict = $InputObject
+        }
+
         $memStream = [System.IO.MemoryStream]::new()
-        [DataHash]::_serializeToBsonStream($memStream, $InputObject)
+        [DataHash]::_serializeToBsonStream($memStream, $dict)
         $memStream.Position = 0
-        return [DataHash]::_computeHash_Streaming($memStream, $this.HashAlgorithm)
+        return [DataHash]::_computeHash_Streaming($memStream, $Algorithm)
     }
 
     hidden [object] _normalizeValue([object]$Value) {
@@ -179,7 +183,6 @@ Class DataHash {
         return $normalizedDict
     }
 
-
     hidden [object] _normalizeList([object]$List) {
         try {
             if ([DataHash]::_CanFormCircularReferences($List)) {
@@ -224,10 +227,7 @@ Class DataHash {
         return $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
-    static hidden [void] _serializeToBsonStream(
-        [System.IO.Stream]$Stream,
-        [object]$InputObject
-    ) {
+    static hidden [void] _serializeToBsonStream([System.IO.Stream]$Stream, [object]$InputObject) {
         if ($null -eq $InputObject) { throw "[DataHash]::_serializeToBsonStream: Input cannot be null." }
 
         # Ensure PowerShell object is correctly mapped to BSON format
@@ -241,10 +241,7 @@ Class DataHash {
         $Stream.Flush()  # Ensure all data is written
     }
 
-    static hidden [string] _computeHash_Streaming(
-        [System.IO.Stream]$Stream,
-        [string]$Algorithm
-    ) {
+    static hidden [string] _computeHash_Streaming([System.IO.Stream]$Stream, [string]$Algorithm) {
         $hasher = [System.Security.Cryptography.HashAlgorithm]::Create($Algorithm)
         if ($null -eq $hasher) { throw "[DataHash]::_computeHash_Streaming: Invalid hash algorithm '$Algorithm'" }
 
@@ -267,9 +264,7 @@ Class DataHash {
         return [BitConverter]::ToString($hasher.Hash) -replace '-', ''
     }
 
-    static hidden [bool] _isEnumerable(
-        [object]$Value
-    ) {
+    static hidden [bool] _isEnumerable([object]$Value) {
         return ($Value -is [System.Collections.IEnumerable]) -and ($Value -isnot [string])
     }
 
@@ -284,6 +279,31 @@ Class DataHash {
             ($Value -isnot [System.Collections.Generic.HashSet[object]]) -and
             ($Value -isnot [System.Collections.Generic.SortedSet[object]])
     }
+
+    static hidden [bool] _CanSerializeToBSON([object]$Value) {
+        if ($null -eq $Value) { return $true }  # Null is valid BSON (`null`)
+
+        # Directly serializable types
+        if ($Value -is [System.Collections.IDictionary] -or
+            $Value -is [PSCustomObject] -or
+            $Value -is [System.Collections.Specialized.OrderedDictionary]) {
+            return $true  # Already a BSON document
+        }
+
+        # Scalars (but must be wrapped)
+        if ($Value -is [ValueType] -or $Value -is [string]) {
+            return $false  # Must be wrapped
+        }
+
+        # Lists (but must be wrapped)
+        if ($Value -is [System.Collections.IEnumerable]) {
+            return $false  # Must be wrapped
+        }
+
+        # If it's a complex .NET object with properties, assume it can be serialized
+        return $true
+    }
+
 
     hidden [void] ResetVisited() {
         if ($null -eq $this.Visited) {
@@ -301,11 +321,9 @@ Class DataHash {
         }
     }
 
-    [bool] Equals(
-        [object]$Other
-    ) {
+    [bool] Equals([object]$Other) {
         if ($Other -is [DataHash]) {
-            return $this.op_Equality($this, $Other)
+            return [DataHash]::op_Equality($this, $Other)
         }
         if ($Other -is [string]) {
             return $this.Hash -eq $Other
@@ -313,48 +331,30 @@ Class DataHash {
         return $false
     }
 
-    static [bool] op_Equality(
-        [DataHash]$a,
-        [DataHash]$b
-    ) {
+    static [bool] op_Equality([DataHash]$a, [DataHash]$b) {
         if ($null -eq $a -or $null -eq $b) { return $false }
         return $a.Hash -eq $b.Hash
     }
 
-    static [bool] op_Equality(
-        [DataHash]$a, 
-        [string]$b
-    ) {
+    static [bool] op_Equality([DataHash]$a, [string]$b) {
         if ($null -eq $a) { return $false }
         return $a.Hash -eq $b
     }
 
-    static [bool] op_Equality(
-        [string]$a, 
-        [DataHash]$b
-    ) {
+    static [bool] op_Equality([string]$a, [DataHash]$b) {
         if ($null -eq $b) { return $false }
         return $a -eq $b.Hash
     }
 
-    static [bool] op_Inequality(
-        [DataHash]$a, 
-        [DataHash]$b
-    ) {
+    static [bool] op_Inequality([DataHash]$a, [DataHash]$b) {
         return -not ([DataHash]::op_Equality($a, $b))
     }
 
-    static [bool] op_Inequality(
-        [DataHash]$a, 
-        [string]$b
-    ) {
+    static [bool] op_Inequality([DataHash]$a, [string]$b) {
         return -not ([DataHash]::op_Equality($a, $b))
     }
 
-    static [bool] op_Inequality(
-        [string]$a, 
-        [DataHash]$b
-    ) {
+    static [bool] op_Inequality([string]$a, [DataHash]$b) {
         return -not ([DataHash]::op_Equality($a, $b))
     }
 
