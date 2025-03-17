@@ -218,8 +218,19 @@ Class DataHash {
     }
 
     static hidden [string] _normalizeFloat([double]$Value) {
-        return $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
+        $str = $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
+        $decimalPos = $str.IndexOf('.')
+
+        # Only truncate if there are more than 17 digits after the decimal
+        if ($decimalPos -ge 0) {
+            $maxLength = [math]::Min($str.Length, $decimalPos + 16)  # Ensure we don’t exceed length
+            return $str.Substring(0, $maxLength)
+        }
+
+        return $str
     }
+
+
 
     static hidden [void] _serializeToBsonStream(
         [System.IO.Stream]$Stream,
