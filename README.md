@@ -141,11 +141,6 @@ if (-not (Test-Path "processed\$itemDigest.txt")) {
 This avoids **re-processing the same data**, improving efficiency.  
 
 ---
-Gotcha! Let’s swap out the **circular reference** example for something way cooler—something **practical, unique, and shows off `DataHash`’s real-world power**.  
-
-How about **tamper detection in PowerShell scripts**? We can **hash a script’s content**, store the digest, and later verify if it has been altered—perfect for security monitoring, CI/CD pipelines, or compliance.  
-
----
 
 ### **🛡️ Detecting Script Tampering & Unauthorized Changes**  
 PowerShell scripts control **critical automation, deployments, and security tasks**. But what if someone **modifies a script**—intentionally or accidentally?  
