@@ -1,4 +1,4 @@
-# **`DataHash` - A Battle-Tested PowerShell Hashing Utility**  
+# **`DataHash` - A PowerShell Object Hashing Utility**  
 
 ***Powershell 7+***
 
@@ -217,6 +217,9 @@ PowerShell’s built-in `ConvertTo-Json` has a problem—it **silently changes d
 🔹 **Custom serialization support** – Extend hashing to **custom PowerShell types** with LiteDB’s `BsonMapper`.  
 
 By leveraging **BSON instead of JSON**, `DataHash` ensures every digest is **stable and predictable**, even across different PowerShell versions and environments.  
+
+### **Do we store data in LiteDB, is that how this gets done?
+No! we don't even store the input object within the instance of [DataHash]. We're using two-thirds of the LiteDB library, as a ***lightweight implementation of the BSON standard***, we leverage BSON, BSON Serialization, and Custom Type Mapping from LiteDB.
 
 ### **Need to hash custom PowerShell objects? No problem.**  
 With **LiteDB’s `BsonMapper`**, you can **define exactly how your custom types serialize**, ensuring `DataHash` generates **consistent, structured digests** for your unique data models.  
