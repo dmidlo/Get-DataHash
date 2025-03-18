@@ -1,8 +1,20 @@
-using module '.\private\types\LiteDB.dll'
-using module '.\private\types\DataHash.psm1'
+using assembly 'LiteDB.dll'
+using namespace LiteDB
+using module './private/types/DataHash.psm1'
 
+try {
+    $mapper = [BsonMapper]::Global
+    $Mappers = Get-ChildItem -Path "$PSScriptRoot\private\types\Mappers" -Filter "Mapper_*.ps1"
 
-. './private/types/Mappers/RegisterMappers.ps1'
+    foreach ($script in $Mappers) {
+        . $script.FullName
+    }
+    write-host "Mappers Registered Succesfully"
+}
+catch {
+    write-host "Custom Mappers not registered.  Default types support for serialization will be used."
+}
+
 
 # Define the types to export with type accelerators.
 $ExportableTypes =@(

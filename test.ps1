@@ -1,4 +1,4 @@
 Import-Module Pester
-Import-Module './Get-DataHash.psm1'
+Import-Module './Get-DataHash.psd1'
 
 Invoke-Pester

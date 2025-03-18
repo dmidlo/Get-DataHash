@@ -245,7 +245,7 @@ $DataHash.IgnoreFields.Add('Timestamp')  # Ignore volatile fields
 
 $logEntry = @{ User = "Alice"; Action = "Login"; Timestamp = (Get-Date) }
 
-$hash = $DataHash.Generate($logEntry, "SHA256")
+$hash = $DataHash.Digest($logEntry, "SHA256")
 Write-Output "Digest without Timestamp: $hash"
 ```
 
@@ -262,7 +262,7 @@ PowerShell objects aren’t **just hashtables**, but `DataHash` makes them **wor
 $DataHash = [DataHash]::New()
 $user = [PSCustomObject]@{ Name = "John"; Age = 30 }
 
-$hash = $DataHash.Generate($user, "SHA256")
+$hash = $DataHash.Digest($user, "SHA256")
 Write-Output "User Digest: $hash"
 ```
 
@@ -279,7 +279,7 @@ Unlike normal dictionaries, **ordered dictionaries matter**—and `DataHash` **r
 $DataHash = [DataHash]::New()
 $orderedDict = [ordered]@{ C = 1; A = 2; B = 3 }
 
-$hash = $DataHash.Generate($orderedDict, "SHA256")
+$hash = $DataHash.Digest($orderedDict, "SHA256")
 Write-Output "Ordered Dictionary Digest: $hash"
 ```
 
@@ -298,7 +298,7 @@ $complexDict = @{
     OrderedPart = [ordered]@{ B = 2; A = 1 }
 }
 
-$hash = $DataHash.Generate($complexDict, "SHA256")
+$hash = $DataHash.Digest($complexDict, "SHA256")
 Write-Output "Nested Ordered Dictionary Digest: $hash"
 ```
 
@@ -320,7 +320,7 @@ $nestedDict = @{
     }
 }
 
-$hash = $DataHash.Generate($nestedDict, "SHA256")
+$hash = $DataHash.Digest($nestedDict, "SHA256")
 Write-Output "Nested Dictionary Digest: $hash"
 ```
 
@@ -335,7 +335,7 @@ Sometimes, data has `null` values—**but we still need them to hash correctly**
 $DataHash = [DataHash]::New()
 $testDict = @{ Key1 = $null }
 
-$hash = $DataHash.Generate($testDict, "SHA256")
+$hash = $DataHash.Digest($testDict, "SHA256")
 Write-Output "Digest of Object with Null: $hash"
 ```
 
@@ -360,7 +360,7 @@ Ordered lists **stay ordered**, so you can **track changes reliably** without un
 $DataHash = [DataHash]::New()
 $orderedList = [System.Collections.Generic.List[object]]@("A", "B", "C")
 
-$hash = $DataHash.Generate($orderedList, "SHA256")
+$hash = $DataHash.Digest($orderedList, "SHA256")
 Write-Output "Ordered List Digest: $hash"
 ```
 
@@ -377,7 +377,7 @@ Unordered collections (like **HashSets**) get **sorted automatically**, ensuring
 $DataHash = [DataHash]::New()
 $unorderedSet = [System.Collections.Generic.HashSet[object]]::new(@("B", "A", "C"))
 
-$hash = $DataHash.Generate($unorderedSet, "SHA256")
+$hash = $DataHash.Digest($unorderedSet, "SHA256")
 Write-Output "Unordered Set Digest: $hash"
 ```
 
@@ -394,7 +394,7 @@ Got **strings, numbers, booleans, and floats all in one list**? No problem. `Dat
 $DataHash = [DataHash]::New()
 $mixedList = @(42, "Test", $true, 3.14)
 
-$hash = $DataHash.Generate($mixedList, "SHA256")
+$hash = $DataHash.Digest($mixedList, "SHA256")
 Write-Output "Mixed Data List Digest: $hash"
 ```
 
@@ -411,7 +411,7 @@ Deeply nested lists **retain their structure**, while unordered sub-lists **get 
 $DataHash = [DataHash]::New()
 $nestedList = @(1, @(2, 3), 4)
 
-$hash = $DataHash.Generate($nestedList, "SHA256")
+$hash = $DataHash.Digest($nestedList, "SHA256")
 Write-Output "Nested List Digest: $hash"
 ```
 
@@ -429,7 +429,7 @@ $DataHash = [DataHash]::New()
 $unorderedNestedSet = [System.Collections.Generic.HashSet[object]]::new(@(3, 2))
 $orderedUnordered = @(1, $unorderedNestedSet, 4)
 
-$hash = $DataHash.Generate($orderedUnordered, "SHA256")
+$hash = $DataHash.Digest($orderedUnordered, "SHA256")
 Write-Output "Sorted Nested Unordered Data Digest: $hash"
 ```
 
@@ -447,7 +447,7 @@ $DataHash = [DataHash]::New()
 $orderedNestedList = [System.Collections.Generic.List[object]]::new(@(3, 2))
 $orderedOrdered = @(1, $orderedNestedList, 4)
 
-$hash = $DataHash.Generate($orderedOrdered, "SHA256")
+$hash = $DataHash.Digest($orderedOrdered, "SHA256")
 Write-Output "Nested Ordered List Digest: $hash"
 ```
 
@@ -465,7 +465,7 @@ $DataHash = [DataHash]::New()
 $orderedNestedList = [System.Collections.Generic.List[object]]::new(@(3, 2))
 $unorderedOrdered = [System.Collections.Generic.HashSet[object]]::new(@(4, $orderedNestedList, 1))
 
-$hash = $DataHash.Generate($unorderedOrdered, "SHA256")
+$hash = $DataHash.Digest($unorderedOrdered, "SHA256")
 Write-Output "Unordered Parent, Ordered Child Digest: $hash"
 ```
 
@@ -482,7 +482,7 @@ Floats can be **messy** in PowerShell—but `DataHash` **ensures numerical consi
 $DataHash = [DataHash]::New()
 $floatList = @(3.14, 2.71)
 
-$hash = $DataHash.Generate($floatList, "SHA256")
+$hash = $DataHash.Digest($floatList, "SHA256")
 Write-Output "Floating Point Digest: $hash"
 ```
 
@@ -499,7 +499,7 @@ Booleans (`$true/$false`) **are preserved exactly**, so you get **precise, repea
 $DataHash = [DataHash]::New()
 $boolList = @($true, $false, $true)
 
-$hash = $DataHash.Generate($boolList, "SHA256")
+$hash = $DataHash.Digest($boolList, "SHA256")
 Write-Output "Boolean List Digest: $hash"
 ```
 

@@ -1,5 +1,5 @@
 Import-Module Pester
-Import-Module './Get-DataHash.psm1'
+Import-Module './Get-DataHash.psd1'
 
 Describe "DataHash Constructors" {
 
@@ -19,8 +19,9 @@ Describe "DataHash Constructors" {
 
     It "Default constructor should initialize with expected defaults" {
         $hashObj = [DataHash]::new()
-        $hash = $hashObj.Generate($simpleObject, [DataHashAlgorithmType]::SHA256)
-        $hash | Should -Not -BeNullOrEmpty
+        $hashObj.Hash | Should -BeNullOrEmpty
+        $hashObj.Digest($simpleObject, [DataHashAlgorithmType]::SHA256)
+        $hashObj.Hash | Should -Not -BeNullOrEmpty
         $hashObj | Should -BeOfType [DataHash]
         $hashObj.HashAlgorithm | Should -Be 'SHA256'
     }

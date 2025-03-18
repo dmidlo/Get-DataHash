@@ -1,14 +1,4 @@
-
-# Load DLL first
-$LiteDBPath = [System.IO.Path]::Combine("private", "types", "LiteDB.dll")
-$ImportPrivateModulesPath = [System.IO.Path]::Combine("private", "Import-PrivateModules.ps1")
-
-if (-Not (([System.AppDomain]::CurrentDomain.GetAssemblies()).Where({ $_.Location -eq $assemblyPath }))) {
-    Add-Type -Path $LiteDBPath
-}
-
-# Dot-source imports to apply 'using namespace'
-. $ImportPrivateModulesPath
+using namespace LiteDB
 
 <#
 .SYNOPSIS
@@ -51,7 +41,7 @@ Class DataHash {
         try {
             $this.ResetVisited()
             $this.InitializeIgnoreFields()
-            $this.Hash = $this.Generate($InputObject, [DataHashAlgorithmType]::SHA256)
+            $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
@@ -61,7 +51,7 @@ Class DataHash {
         try {
             $this.ResetVisited()
             $this.IgnoreFields = $IgnoreFields
-            $this.Hash = $this.Generate($InputObject, [DataHashAlgorithmType]::SHA256)
+            $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
@@ -82,13 +72,21 @@ Class DataHash {
                 throw  "Invalid Hash Type: $hashAlgorithm"
             }
             
-            $this.Hash = $this.Generate($InputObject, $HashAlgorithm)
+            $this.Digest($InputObject, $HashAlgorithm)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
     }
 
-    [string] Generate([object]$InputObject, [string]$HashAlgorithm) {
+    [void] Digest([object]$InputObject) {
+        $this.Hash = $this._digest($InputObject, $this.HashAlgorithm)
+    }
+
+    [void] Digest([object]$InputObject, [string]$HashAlgorithm) {
+        $this.Hash = $this._digest($InputObject, $HashAlgorithm)
+    }
+
+    hidden [string] _digest([object]$InputObject, [string]$HashAlgorithm) {
         $this.ResetVisited()
         if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
 
@@ -103,10 +101,10 @@ Class DataHash {
             }
         
         if ([DataHash]::_isScalar($InputObject)) {
-            return [DataHash]::_hash($InputObject)
+            return [DataHash]::_hash($InputObject, $this.HashAlgorithm)
         }
 
-        throw "[DataHash]::Generate: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
+        throw "[DataHash]::Digest: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
     }
 
     static hidden [object] _hash ([object]$InputObject, [string]$Algorithm){
@@ -231,10 +229,10 @@ Class DataHash {
         if ($null -eq $InputObject) { throw "[DataHash]::_serializeToBsonStream: Input cannot be null." }
 
         # Ensure PowerShell object is correctly mapped to BSON format
-        $bsonDocument = [LiteDB.BsonMapper]::Global.ToDocument($InputObject)
+        $bsonDocument = [BsonMapper]::Global.ToDocument($InputObject)
 
         # Serialize BsonDocument to Byte Array
-        $serializedBytes = [LiteDB.BsonSerializer]::Serialize($bsonDocument)
+        $serializedBytes = [BsonSerializer]::Serialize($bsonDocument)
 
         # Write the byte array to the stream
         $Stream.Write($serializedBytes, 0, $serializedBytes.Length)
