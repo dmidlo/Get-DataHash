@@ -26,6 +26,7 @@ Class DataHash {
     [string]$Hash
     [System.Collections.Generic.HashSet[string]]$IgnoreFields
     [string]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
+    hidden [System.Collections.Generic.HashSet[Type]]$TypeMappers
     hidden [System.Collections.Generic.HashSet[object]]$Visited
 
     DataHash() {
@@ -57,11 +58,7 @@ Class DataHash {
         }
     }
 
-    DataHash(
-        [Object]$InputObject,
-        [System.Collections.Generic.HashSet[string]]$IgnoreFields, 
-        [string]$HashAlgorithm
-    ) { 
+    DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields, [string]$HashAlgorithm) { 
         try {
             $this.ResetVisited()
             $this.IgnoreFields = $IgnoreFields
@@ -86,42 +83,20 @@ Class DataHash {
         $this.Hash = $this._digest($InputObject, $HashAlgorithm)
     }
 
-    hidden [string] _digest([object]$InputObject, [string]$HashAlgorithm) {
-        $this.ResetVisited()
-        if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
-
-        if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
-                $normalizedDict = $this._normalizeDict($InputObject)
-                return [DataHash]::_hash($normalizedDict, $this.HashAlgorithm)
+    hidden [void] ResetVisited() {
+        if ($null -eq $this.Visited) {
+            $this.Visited = [System.Collections.Generic.HashSet[object]]::new()
+        } else {
+            $this.Visited.Clear()
         }
-
-        if ([DataHash]::_isEnumerable($InputObject)) {
-                $normalizedList = $this._normalizeList($InputObject)
-                return [DataHash]::_hash($normalizedList, $this.HashAlgorithm)
-            }
-        
-        if ([DataHash]::_isScalar($InputObject)) {
-            return [DataHash]::_hash($InputObject, $this.HashAlgorithm)
-        }
-
-        throw "[DataHash]::Digest: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
     }
 
-    static hidden [object] _hash ([object]$InputObject, [string]$Algorithm){
-
-        $dict = $null
-
-        if (-not [DataHash]::_CanSerializeToBSON($InputObject)) {
-            $dict = @{_value = $InputObject}
+    hidden [void] InitializeIgnoreFields() {
+        if ($null -eq $this.IgnoreFields) {
+            $this.IgnoreFields = [System.Collections.Generic.HashSet[string]]::new()
+        } else {
+            $this.IgnoreFields.Clear()
         }
-        else {
-            $dict = $InputObject
-        }
-
-        $memStream = [System.IO.MemoryStream]::new()
-        [DataHash]::_serializeToBsonStream($memStream, $dict)
-        $memStream.Position = 0
-        return [DataHash]::_computeHash_Streaming($memStream, $Algorithm)
     }
 
     hidden [object] _normalizeValue([object]$Value) {
@@ -225,6 +200,44 @@ Class DataHash {
         return $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
+    hidden [string] _digest([object]$InputObject, [string]$HashAlgorithm) {
+        $this.ResetVisited()
+        if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
+
+        if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
+                $normalizedDict = $this._normalizeDict($InputObject)
+                return [DataHash]::_hash($normalizedDict, $this.HashAlgorithm)
+        }
+
+        if ([DataHash]::_isEnumerable($InputObject)) {
+                $normalizedList = $this._normalizeList($InputObject)
+                return [DataHash]::_hash($normalizedList, $this.HashAlgorithm)
+            }
+        
+        if ([DataHash]::_isScalar($InputObject)) {
+            return [DataHash]::_hash($InputObject, $this.HashAlgorithm)
+        }
+
+        throw "[DataHash]::Digest: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
+    }
+
+    static hidden [object] _hash ([object]$InputObject, [string]$Algorithm){
+
+        $dict = $null
+
+        if (-not [DataHash]::_CanSerializeToBSON($InputObject)) {
+            $dict = @{_value = $InputObject}
+        }
+        else {
+            $dict = $InputObject
+        }
+
+        $memStream = [System.IO.MemoryStream]::new()
+        [DataHash]::_serializeToBsonStream($memStream, $dict)
+        $memStream.Position = 0
+        return [DataHash]::_computeHash_Streaming($memStream, $Algorithm)
+    }
+
     static hidden [void] _serializeToBsonStream([System.IO.Stream]$Stream, [object]$InputObject) {
         if ($null -eq $InputObject) { throw "[DataHash]::_serializeToBsonStream: Input cannot be null." }
 
@@ -300,23 +313,6 @@ Class DataHash {
 
         # If it's a complex .NET object with properties, assume it can be serialized
         return $true
-    }
-
-
-    hidden [void] ResetVisited() {
-        if ($null -eq $this.Visited) {
-            $this.Visited = [System.Collections.Generic.HashSet[object]]::new()
-        } else {
-            $this.Visited.Clear()
-        }
-    }
-
-    hidden [void] InitializeIgnoreFields() {
-        if ($null -eq $this.IgnoreFields) {
-            $this.IgnoreFields = [System.Collections.Generic.HashSet[string]]::new()
-        } else {
-            $this.IgnoreFields.Clear()
-        }
     }
 
     [bool] Equals([object]$Other) {

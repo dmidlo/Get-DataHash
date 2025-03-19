@@ -1,5 +1,5 @@
 Import-Module Pester
-Import-Module './Get-DataHash.psm1'
+Import-Module './Get-DataHash.psd1'
 
 Describe "DataHash::_NormalizeDict" {
     It "Returns empty hashtable for empty input" {
