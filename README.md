@@ -27,7 +27,7 @@ To achieve **stable, predictable message digests**, `DataHash` follows these key
 
 🔹 **Handles circular references** gracefully – Self-referencing objects are marked as `"[CIRCULAR_REF]"` in the pre-hash structure, ensuring unique object identity if the reference is not present later. Also prevents infinite loops... which is pretty useful too.
 
-🔹 **Normalizes floating-point values** – Converts them to **IEEE 754 consistent string representations** (`"G17"` format) to ensure **cross-platform** and **cross-runtime** consistency.  
+🔹 **Normalizes floating-point values** – Converts them to **IEEE 754 consistent string representations** (`"R"`, *reproducible format) to ensure **cross-platform** and **cross-runtime** consistency.  
 
 🔹 **Ignores explicitly excluded fields** – Developers can **exclude volatile fields** (like timestamps, session IDs, or request tracking fields) to maintain **consistent digests** even as values change.  
 

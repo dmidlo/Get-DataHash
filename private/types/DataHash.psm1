@@ -222,7 +222,7 @@ Class DataHash {
     }
 
     static hidden [string] _normalizeFloat([double]$Value) {
-        return $Value.ToString("G17", [System.Globalization.CultureInfo]::InvariantCulture)
+        return $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
     static hidden [void] _serializeToBsonStream([System.IO.Stream]$Stream, [object]$InputObject) {
