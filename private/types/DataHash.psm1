@@ -23,25 +23,31 @@ enum DataHashAlgorithmType {
 
 [NoRunspaceAffinity()]
 Class DataHash {
+
+    # Public Properties
     [string]$Hash
     [System.Collections.Generic.HashSet[string]]$IgnoreFields
     [string]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
-    hidden [System.Collections.Generic.HashSet[Type]]$TypeMappers
-    hidden [System.Collections.Generic.HashSet[object]]$Visited
+
+    # Private Properties
+    hidden [System.Collections.Generic.HashSet[Type]]$_typeMappers
+    hidden [System.Collections.Generic.HashSet[object]]$_visited
 
     DataHash() {
         try {
-            $this.ResetVisited()
-            $this.InitializeIgnoreFields()
+            $this._resetVisited()
+            $this._initializeIgnoreFields()
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
         }
     }
 
+    #1 Constructors
+
     DataHash([Object]$InputObject) {
         try {
-            $this.ResetVisited()
-            $this.InitializeIgnoreFields()
+            $this._resetVisited()
+            $this._initializeIgnoreFields()
             $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
@@ -50,7 +56,7 @@ Class DataHash {
 
     DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields) {
         try {
-            $this.ResetVisited()
+            $this._resetVisited()
             $this.IgnoreFields = $IgnoreFields
             $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
@@ -60,7 +66,7 @@ Class DataHash {
 
     DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields, [string]$HashAlgorithm) { 
         try {
-            $this.ResetVisited()
+            $this._resetVisited()
             $this.IgnoreFields = $IgnoreFields
 
             if ([System.Enum]::IsDefined([DataHashAlgorithmType], $HashAlgorithm)) {
@@ -75,6 +81,8 @@ Class DataHash {
         }
     }
 
+    #2 Public Methods
+
     [void] Digest([object]$InputObject) {
         $this.Hash = $this._digest($InputObject, $this.HashAlgorithm)
     }
@@ -83,21 +91,50 @@ Class DataHash {
         $this.Hash = $this._digest($InputObject, $HashAlgorithm)
     }
 
-    hidden [void] ResetVisited() {
-        if ($null -eq $this.Visited) {
-            $this.Visited = [System.Collections.Generic.HashSet[object]]::new()
+    #3 Private Methods
+
+    ##4 Constructor Init Helpers
+
+    hidden [void] _resetVisited() {
+        if ($null -eq $this._visited) {
+            $this._visited = [System.Collections.Generic.HashSet[object]]::new()
         } else {
-            $this.Visited.Clear()
+            $this._visited.Clear()
         }
     }
 
-    hidden [void] InitializeIgnoreFields() {
+    hidden [void] _initializeIgnoreFields() {
         if ($null -eq $this.IgnoreFields) {
             $this.IgnoreFields = [System.Collections.Generic.HashSet[string]]::new()
         } else {
             $this.IgnoreFields.Clear()
         }
     }
+
+    ##5 Public Method Helpers
+
+    hidden [string] _digest([object]$InputObject, [string]$HashAlgorithm) {
+        $this._resetVisited()
+        if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
+
+        if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
+                $normalizedDict = $this._normalizeDict($InputObject)
+                return [DataHash]::_hash($normalizedDict, $this.HashAlgorithm)
+        }
+
+        if ([DataHash]::_isEnumerable($InputObject)) {
+                $normalizedList = $this._normalizeList($InputObject)
+                return [DataHash]::_hash($normalizedList, $this.HashAlgorithm)
+            }
+        
+        if ([DataHash]::_isScalar($InputObject)) {
+            return [DataHash]::_hash($InputObject, $this.HashAlgorithm)
+        }
+
+        throw "[DataHash]::Digest: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
+    }
+
+    ##6 Normalization Methods
 
     hidden [object] _normalizeValue([object]$Value) {
         if ($null -eq $Value) { return "[NULL]" }
@@ -122,13 +159,13 @@ Class DataHash {
     }
 
     hidden [object] _normalizeDict([object]$Dictionary) {
-        foreach ($visitedItem in $this.Visited) {
+        foreach ($visitedItem in $this._visited) {
             if ([object]::ReferenceEquals($visitedItem, $Dictionary)) { 
                 return "[CIRCULAR_REF]"
             }
         }
 
-        $this.Visited.Add($Dictionary)
+        $this._visited.Add($Dictionary)
 
         $normalizedDict = [Ordered]@{}
 
@@ -159,12 +196,12 @@ Class DataHash {
     hidden [object] _normalizeList([object]$List) {
         try {
             if ([DataHash]::_CanFormCircularReferences($List)) {
-                foreach ($visitedItem in $this.Visited) {
+                foreach ($visitedItem in $this._visited) {
                     if ([object]::ReferenceEquals($visitedItem, $List)) { 
                         return "[CIRCULAR_REF]"
                     }
                 }
-                $this.Visited.Add($List)
+                $this._visited.Add($List)
             }
 
 
@@ -200,26 +237,49 @@ Class DataHash {
         return $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
-    hidden [string] _digest([object]$InputObject, [string]$HashAlgorithm) {
-        $this.ResetVisited()
-        if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
+    ##7 Normaalization Helpers
 
-        if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
-                $normalizedDict = $this._normalizeDict($InputObject)
-                return [DataHash]::_hash($normalizedDict, $this.HashAlgorithm)
-        }
-
-        if ([DataHash]::_isEnumerable($InputObject)) {
-                $normalizedList = $this._normalizeList($InputObject)
-                return [DataHash]::_hash($normalizedList, $this.HashAlgorithm)
-            }
-        
-        if ([DataHash]::_isScalar($InputObject)) {
-            return [DataHash]::_hash($InputObject, $this.HashAlgorithm)
-        }
-
-        throw "[DataHash]::Digest: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
+    static hidden [bool] _isScalar([object]$Value) {
+        return $Value -is [ValueType] -or $Value -is [string]
     }
+
+    static hidden [bool] _isEnumerable([object]$Value) {
+        return ($Value -is [System.Collections.IEnumerable]) -and ($Value -isnot [string])
+    }
+
+    static hidden [bool] _CanFormCircularReferences([object]$Value) {
+        return ($Value -is [System.Collections.IEnumerable]) -and
+            ($Value -isnot [string]) -and
+            ($Value -isnot [System.Array]) -and
+            ($Value -isnot [System.Collections.Generic.HashSet[object]]) -and
+            ($Value -isnot [System.Collections.Generic.SortedSet[object]])
+    }
+
+    static hidden [bool] _CanSerializeToBSON([object]$Value) {
+        if ($null -eq $Value) { return $true }  # Null is valid BSON (`null`)
+
+        # Directly serializable types
+        if ($Value -is [System.Collections.IDictionary] -or
+            $Value -is [PSCustomObject] -or
+            $Value -is [System.Collections.Specialized.OrderedDictionary]) {
+            return $true  # Already a BSON document
+        }
+
+        # Scalars (but must be wrapped)
+        if ($Value -is [ValueType] -or $Value -is [string]) {
+            return $false  # Must be wrapped
+        }
+
+        # Lists (but must be wrapped)
+        if ($Value -is [System.Collections.IEnumerable]) {
+            return $false  # Must be wrapped
+        }
+
+        # If it's a complex .NET object with properties, assume it can be serialized
+        return $true
+    }
+
+    #8 Hashing Methods
 
     static hidden [object] _hash ([object]$InputObject, [string]$Algorithm){
 
@@ -275,45 +335,7 @@ Class DataHash {
         return [BitConverter]::ToString($hasher.Hash) -replace '-', ''
     }
 
-    static hidden [bool] _isEnumerable([object]$Value) {
-        return ($Value -is [System.Collections.IEnumerable]) -and ($Value -isnot [string])
-    }
-
-    static hidden [bool] _isScalar([object]$Value) {
-        return $Value -is [ValueType] -or $Value -is [string]
-    }
-
-    static hidden [bool] _CanFormCircularReferences([object]$Value) {
-        return ($Value -is [System.Collections.IEnumerable]) -and
-            ($Value -isnot [string]) -and
-            ($Value -isnot [System.Array]) -and
-            ($Value -isnot [System.Collections.Generic.HashSet[object]]) -and
-            ($Value -isnot [System.Collections.Generic.SortedSet[object]])
-    }
-
-    static hidden [bool] _CanSerializeToBSON([object]$Value) {
-        if ($null -eq $Value) { return $true }  # Null is valid BSON (`null`)
-
-        # Directly serializable types
-        if ($Value -is [System.Collections.IDictionary] -or
-            $Value -is [PSCustomObject] -or
-            $Value -is [System.Collections.Specialized.OrderedDictionary]) {
-            return $true  # Already a BSON document
-        }
-
-        # Scalars (but must be wrapped)
-        if ($Value -is [ValueType] -or $Value -is [string]) {
-            return $false  # Must be wrapped
-        }
-
-        # Lists (but must be wrapped)
-        if ($Value -is [System.Collections.IEnumerable]) {
-            return $false  # Must be wrapped
-        }
-
-        # If it's a complex .NET object with properties, assume it can be serialized
-        return $true
-    }
+    #9 Operator Overrides
 
     [bool] Equals([object]$Other) {
         if ($Other -is [DataHash]) {
@@ -351,6 +373,8 @@ Class DataHash {
     static [bool] op_Inequality([string]$a, [DataHash]$b) {
         return -not ([DataHash]::op_Equality($a, $b))
     }
+    
+    #10 Operator Override Helper ... overrides... lol.
 
     [int] GetHashCode() {
         return $this.Hash.GetHashCode()

@@ -58,7 +58,7 @@ Class DataHash
 | `$Hash` | `[string]` | Public | Stores the computed hash value. |
 | `$IgnoreFields` | `[HashSet[string]]` | Public | Tracks fields excluded from hashing. |
 | `$HashAlgorithm` | `[string]` | Public | Defines the hash algorithm used. |
-| `$Visited` | `[HashSet[object]]` | Private | Tracks visited objects for circular reference detection. |
+| `$_visited` | `[HashSet[object]]` | Private | Tracks visited objects for circular reference detection. |
 
 ### **5.3 Constructors**  
 
@@ -100,8 +100,8 @@ To ensure consistency, the class normalizes all input objects before hashing.
 
 ### **6.3 Circular Reference Handling**  
 
-- The class maintains a `HashSet` of visited objects (`$Visited`).  
-- Before processing a structure, it checks if the reference exists in `$Visited`.  
+- The class maintains a `HashSet` of visited objects (`$_visited`).  
+- Before processing a structure, it checks if the reference exists in `$_visited`.  
 - If detected, the value is replaced with `"[CIRCULAR_REF]"` instead of skipping it, ensuring that the hash updates if the value later changes to something other than a self-reference.  
 
 ### **6.4 Hash Computation & Serialization**  
