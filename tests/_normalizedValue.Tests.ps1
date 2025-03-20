@@ -4,6 +4,7 @@ Import-Module './Get-DataHash.psd1'
 Describe "DataHash::_normalizeValue" -Tags "Normalization" {
     BeforeEach {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
     }
 
     It "Replaces null values with '[NULL]'" {
@@ -56,7 +57,7 @@ Describe "DataHash::_normalizeValue" -Tags "Normalization" {
     }
 
     It "Ignores specified fields in lists of PSCustomObjects" {
-        $DataHash.IgnoreFields.Add("Secret")
+        $DataHash.AddIgnoreField("Secret")
 
         $input = @(
             [PSCustomObject]@{ Name = "Alice"; Secret = "Hidden" },

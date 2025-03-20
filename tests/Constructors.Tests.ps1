@@ -20,7 +20,7 @@ Describe "DataHash Constructors" {
     It "Default constructor should initialize with expected defaults" {
         $hashObj = [DataHash]::new()
         $hashObj.Hash | Should -BeNullOrEmpty
-        $hashObj.Digest($simpleObject, [DataHashAlgorithmType]::SHA256)
+        $hashObj.Digest($simpleObject)
         $hashObj.Hash | Should -Not -BeNullOrEmpty
         $hashObj | Should -BeOfType [DataHash]
         $hashObj.HashAlgorithm | Should -Be 'SHA256'

@@ -21,95 +21,112 @@ enum DataHashAlgorithmType {
     SHA512
 }
 
+class AlgorithmHelper {
+    
+    static [DataHashAlgorithmType] GetAlgorithmType([string]$name) {
+        if ([Enum]::IsDefined([DataHashAlgorithmType], $name)) {
+            return ([DataHashAlgorithmType]::$name).ToString()
+        }
+
+        Write-Host "Invalid Algorithm"
+        [AlgorithmHelper]::PrintAlgorithmTypes()
+        throw "`n Invalid Algorithm."
+    }
+
+    static [void] PrintAlgorithmTypes() {
+        Write-Host "`n[DataHashAlgorithmType] - Available Algorithms:" -ForegroundColor Cyan
+        Write-Host "---------------------------------" -ForegroundColor DarkCyan
+        ([Enum]::GetValues([DataHashAlgorithmType])).ForEach({
+            Write-Host $PSItem -ForegroundColor Green
+        })
+        Write-Host "---------------------------------`n" -ForegroundColor DarkCyan
+    }
+}
+
 [NoRunspaceAffinity()]
 Class DataHash {
 
+
     # Public Properties
     [string]$Hash
-    [string]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
-    
+    [DataHashAlgorithmType]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
+
+
     # Private Properties
+    [string]$_hashAlgorithm = 'SHA256'
     [System.Collections.Generic.HashSet[string]]$_ignoreFields
     hidden [System.Collections.Generic.HashSet[Type]]$_typeMappers
     hidden [System.Collections.Generic.HashSet[object]]$_visited
 
-    DataHash() {
-        try {
-            $this._resetVisited()
-            $this._initializeIgnoreFields()
-        } catch {
-            throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
-        }
-    }
 
     #1 Constructors
 
+    # for when you want to configure the object before hashing
+    DataHash() {
+        try {
+            $this._initializeIgnoreFields()
+        } catch {
+            throw "[DataHash]::Constructor: Error while initializing DataHash - $PSItem"
+        }
+    }
+
+    # for when you want to accept the defaults
     DataHash([Object]$InputObject) {
         try {
-            $this._resetVisited()
             $this._initializeIgnoreFields()
-            $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
+            $this.Digest($InputObject)
         } catch {
-            throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
+            throw "[DataHash]::Constructor: Error while initializing DataHash - $PSItem"
         }
     }
 
-    DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields) {
+    # for when you want to configure Key Fields on Dict-Like objects from hash computation
+    DataHash([Object]$InputObject, [object]$IgnoreFields) {
         try {
-            $this._resetVisited()
-            $this._ignoreFields = $IgnoreFields
-            $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
+            [DataHash]::_isValidTypeForIgnores($InputObject)
+            $this._initializeIgnoreFields()
+            $this.AddIgnoreField($IgnoreFields)
+            $this.Digest($InputObject)
         } catch {
-            throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
+            throw "[DataHash]::Constructor: Error while initializing DataHash - $PSItem"
         }
     }
 
-    DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields, [string]$HashAlgorithm) { 
+    DataHash([Object]$InputObject, [object]$IgnoreFields, [DataHashAlgorithmType]$Algorithm) {
         try {
-            $this._resetVisited()
-            $this._ignoreFields = $IgnoreFields
-
-            if ([System.Enum]::IsDefined([DataHashAlgorithmType], $HashAlgorithm)) {
-                $this.HashAlgorithm = $HashAlgorithm
-            } else {
-                throw  "Invalid Hash Type: $hashAlgorithm"
-            }
-            
-            $this.Digest($InputObject, $HashAlgorithm)
-        } catch {
-            throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
+            [DataHash]::_isValidTypeForIgnores($InputObject)
+            $this._initializeIgnoreFields()
+            $this.AddIgnoreField($IgnoreFields)
+            $this._hashAlgorithm = $Algorithm.ToString()
+            $this.Digest($InputObject)
+        }
+        catch {
+            throw "[DataHash]::Constructor: Error while initializing DataHash - $PSItem"
         }
     }
+
 
     #2 Public Methods
 
-    [void] Digest([object]$InputObject) {
-        $this.Hash = $this._digest($InputObject, $this.HashAlgorithm)
+    [DataHash] Digest([object]$InputObject) {
+        $this._resetVisited()
+        $this.Hash = $this._digest($InputObject)
+        return $this
     }
 
-    [void] Digest([object]$InputObject, [string]$HashAlgorithm) {
-        $this.Hash = $this._digest($InputObject, $HashAlgorithm)
-    }
-
-    [System.Collections.Generic.HashSet[string]] AddIgnoreField([string]$Ignore) {
+    [DataHash] AddIgnoreField([string]$Ignore) {
         $this._ignoreFields.Add($Ignore)
-
-        $return = [System.Collections.Generic.HashSet[string]]::new()
-        $this._ignoreFields.ForEach({$return.Add($_)})
-        return $return
+        return $this
     }
 
-    [System.Collections.Generic.HashSet[string]] AddIgnoreField([System.Collections.IList]$IgnoreFields) {
-        $IgnoreFields.ForEach({$this._ignoreFields.Add($_)})
-
-        $return = [System.Collections.Generic.HashSet[string]]::new()
-        $this._ignoreFields.ForEach({$return.Add($_)})
-        return $return
+    [DataHash] AddIgnoreField([System.Collections.Generic.IList[string]]$IgnoreFields) {
+        $IgnoreFields.ForEach({$this._ignoreFields.Add($PSItem)})
+        return $this
     }
 
     [System.Collections.Generic.HashSet[string]] GetIgnoreFields() {
         $return = [System.Collections.Generic.HashSet[string]]::new()
-        $this._ignoreFields.ForEach({$return.Add($_)})
+        $this._ignoreFields.ForEach({$return.Add($PSItem)})
         return $return
     }
     
@@ -117,66 +134,71 @@ Class DataHash {
         return $this._ignoreFields
     }
 
-    [System.Collections.Generic.HashSet[string]] RemoveIgnoreField([string]$Ignore) {
+    [DataHash] RemoveIgnoreField([string]$Ignore) {
         $this._ignoreFields.Remove($Ignore)
-
-        $return = [System.Collections.Generic.HashSet[string]]::new()
-        $this._ignoreFields.ForEach({$return.Add($_)})
-        return $return
+        return $this
     }
 
-    [System.Collections.Generic.HashSet[string]] RemoveIgnoreField([System.Collections.IList]$IgnoreFields) {
-        $IgnoreFields.ForEach({$this._ignoreFields.Remove($_)})
-
-        $return = [System.Collections.Generic.HashSet[string]]::new()
-        foreach ($field in $this._ignoreFields){
-            $return.Add($field)
-        }
-        return $return
-        
+    [DataHash] RemoveIgnoreField([System.Collections.Generic.IList[string]]$IgnoreFields) {
+        $IgnoreFields.ForEach({$this._ignoreFields.Remove($PSItem)})
+        return $this
     }
+ 
+    [DataHash] SetAlgorithm([string]$Algorithm) {
+        $this.Hash = $null
+        $this._hashAlgorithm = [AlgorithmHelper]::GetAlgorithmType($Algorithm)
+        return $this
+    }
+
+    [void] PrintAvailableAlgorithms() {
+        [AlgorithmHelper]::PrintAlgorithmTypes()
+    }
+
+
     #3 Private Methods
 
     ##4 Constructor Init Helpers
 
-    hidden [void] _resetVisited() {
-        if ($null -eq $this._visited) {
-            $this._visited = [System.Collections.Generic.HashSet[object]]::new()
-        } else {
-            $this._visited.Clear()
-        }
-    }
 
     hidden [void] _initializeIgnoreFields() {
         if ($null -eq $this._ignoreFields) {
             $this._ignoreFields = [System.Collections.Generic.HashSet[string]]::new()
-        } else {
-            $this._ignoreFields.Clear()
         }
     }
 
+
     ##5 Public Method Helpers
 
-    hidden [string] _digest([object]$InputObject, [string]$HashAlgorithm) {
+    hidden [string] _digest([object]$InputObject) {
         $this._resetVisited()
         if ($null -eq $InputObject) { throw "[DataHash]::_hashObject: Input cannot be null." }
 
         if ($InputObject -is [System.Collections.IDictionary] -or $InputObject -is [PSCustomObject]) {
                 $normalizedDict = $this._normalizeDict($InputObject)
-                return [DataHash]::_hash($normalizedDict, $this.HashAlgorithm)
+                return [DataHash]::_hash($normalizedDict, $this._hashAlgorithm)
         }
 
         if ([DataHash]::_isEnumerable($InputObject)) {
                 $normalizedList = $this._normalizeList($InputObject)
-                return [DataHash]::_hash($normalizedList, $this.HashAlgorithm)
+                return [DataHash]::_hash($normalizedList, $this._hashAlgorithm)
             }
         
         if ([DataHash]::_isScalar($InputObject)) {
-            return [DataHash]::_hash($InputObject, $this.HashAlgorithm)
+            return [DataHash]::_hash($InputObject, $this._hashAlgorithm)
         }
 
         throw "[DataHash]::Digest: Unsupported input type '$( $InputObject.GetType().FullName )'. A custom BSON serialization mapper may be required."
     }
+
+    static hidden [bool] _isValidTypeForIgnores([object]$InputObject) {
+        if ($InputObject -is [string] -or [System.Collections.Generic.IEnumerable[string]]) {
+            return $true
+        }
+        else {
+            throw "`$IgnoreFields must be either a single [string] or a flat collection of [string]."
+        }
+    }
+
 
     ##6 Normalization Methods
 
@@ -208,7 +230,7 @@ Class DataHash {
                 return "[CIRCULAR_REF]"
             }
         }
-
+        
         $this._visited.Add($Dictionary)
 
         $normalizedDict = [Ordered]@{}
@@ -226,7 +248,7 @@ Class DataHash {
         $isOrdered = ($Dictionary -is [System.Collections.Specialized.OrderedDictionary]) -or
                     ($Dictionary -is [System.Collections.Generic.SortedDictionary[object,object]])
 
-        $keys = if ($isOrdered) { $Dictionary.Keys } else { $Dictionary.Keys | Sort-Object { $_.ToString() } }
+        $keys = if ($isOrdered) { $Dictionary.Keys } else { $Dictionary.Keys | Sort-Object { $PSItem.ToString() } }
 
         foreach ($key in $keys) {
             if (-not $this._ignoreFields.Contains($key)) {
@@ -263,17 +285,17 @@ Class DataHash {
 
             # Sort only if unordered
             if (-not $isOrdered) {
-                $normalizedList = $normalizedList | Sort-Object { $_.ToString() }
+                $normalizedList = $normalizedList | Sort-Object { $PSItem.ToString() }
             }
 
             return $normalizedList
         }
         catch {
-            $exception = $_.Exception
+            $exception = $PSItem.Exception
             Write-Host "Exception Type: $($exception.GetType().FullName)"
             Write-Host "Message: $($exception.Message)"
             Write-Host "Stack Trace:`n$($exception.StackTrace)"
-            throw
+            throw $PSItem
         }
     }
 
@@ -281,7 +303,16 @@ Class DataHash {
         return $Value.ToString("R", [System.Globalization.CultureInfo]::InvariantCulture)
     }
 
+
     ##7 Normaalization Helpers
+
+    hidden [void] _resetVisited() {
+        if ($null -eq $this._visited) {
+            $this._visited = [System.Collections.Generic.HashSet[object]]::new()
+        } else {
+            $this._visited.Clear()
+        }
+    }
 
     static hidden [bool] _isScalar([object]$Value) {
         return $Value -is [ValueType] -or $Value -is [string]
@@ -322,6 +353,7 @@ Class DataHash {
         # If it's a complex .NET object with properties, assume it can be serialized
         return $true
     }
+
 
     #8 Hashing Methods
 
@@ -379,6 +411,7 @@ Class DataHash {
         return [BitConverter]::ToString($hasher.Hash) -replace '-', ''
     }
 
+
     #9 Operator Overrides
 
     [bool] Equals([object]$Other) {
@@ -417,8 +450,9 @@ Class DataHash {
     static [bool] op_Inequality([string]$a, [DataHash]$b) {
         return -not ([DataHash]::op_Equality($a, $b))
     }
-    
-    #10 Operator Override Helper ... overrides... lol.
+
+
+    #10 Operator Override Helper overrides
 
     [int] GetHashCode() {
         return $this.Hash.GetHashCode()

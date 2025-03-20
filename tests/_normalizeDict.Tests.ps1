@@ -4,12 +4,14 @@ Import-Module './Get-DataHash.psd1'
 Describe "DataHash::_NormalizeDict" {
     It "Returns empty hashtable for empty input" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $result = $DataHash._NormalizeDict(@{})
         ($result | ConvertTo-Json) | Should -BeExactly (@{} | ConvertTo-Json)
     }
 
     It "Preserves ordered dictionaries" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $orderedDict = [ordered]@{ C = 1; A = 2; B = 3 }
         $result = $DataHash._NormalizeDict($orderedDict)
 
@@ -23,6 +25,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Sorts unordered dictionaries" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $unorderedDict = @{ Z = 1; X = 2; A = 3 }
         $result = $DataHash._NormalizeDict($unorderedDict)
 
@@ -35,7 +38,8 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Ignores specified fields" {
         $DataHash = [DataHash]::New()
-        $DataHash.IgnoreFields.Add('B')
+        $DataHash._resetVisited()
+        $DataHash.AddIgnoreField('B')
         $testDict = @{ A = 1; B = 2; C = 3 }
         $result = $DataHash._NormalizeDict($testDict)
         $result.Keys | Should -BeExactly @('A', 'C')  # "B" should be excluded
@@ -43,6 +47,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Handles circular references gracefully" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $circularDict = @{ A = 1 }
         $circularDict["Self"] = $circularDict  # Circular reference
 
@@ -52,6 +57,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Processes PSCustomObject properties as dictionary keys" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $obj = [PSCustomObject]@{ Name = "John"; Age = 30 }
         $result = $DataHash._NormalizeDict($obj)
 
@@ -62,7 +68,8 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Ignores fields in PSCustomObject if specified" {
         $DataHash = [DataHash]::New()
-        $DataHash.IgnoreFields.Add('Age')
+        $DataHash._resetVisited()
+        $DataHash.AddIgnoreField('Age')
         $obj = [PSCustomObject]@{ Name = "John"; Age = 30 }
         $result = $DataHash._NormalizeDict($obj)
 
@@ -72,6 +79,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Normalizes nested dictionaries recursively" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $nestedDict = @{
             Outer = @{
                 Inner2 = 200
@@ -87,6 +95,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Processes ordered nested dictionaries correctly" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $nestedOrdered = [ordered]@{
             Parent = [ordered]@{
                 Y = 20
@@ -102,6 +111,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Does not sort ordered dictionaries within unordered dictionaries" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $dict = @{
             OrderedPart = [ordered]@{ B = 2; A = 1 }
         }
@@ -112,6 +122,7 @@ Describe "DataHash::_NormalizeDict" {
 
     It "Handles null values correctly" {
         $DataHash = [DataHash]::New()
+        $DataHash._resetVisited()
         $testDict = @{ Key1 = $null }
         $result = $DataHash._NormalizeDict($testDict)
         $result["Key1"] | Should -BeExactly "[NULL]"
