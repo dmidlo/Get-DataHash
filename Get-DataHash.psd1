@@ -2,7 +2,7 @@
 
 @{
     RootModule = 'Get-DataHash.psm1'
-    ModuleVersion = '0.9.2'
+    ModuleVersion = '0.91.0'
     CompatiblePSEditions = @('Core', 'Desktop')
     GUID = 'f40df9ce-7a64-46fa-bab3-dd870cbfc091'
     Author = 'David Midlo'

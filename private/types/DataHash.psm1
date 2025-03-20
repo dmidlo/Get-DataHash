@@ -21,6 +21,7 @@ enum DataHashAlgorithmType {
     SHA512
 }
 
+[NoRunspaceAffinity()]
 class AlgorithmHelper {
     
     static [DataHashAlgorithmType] GetAlgorithmType([string]$name) {
