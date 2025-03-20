@@ -5109,7 +5109,7 @@
             Write header data from variable into byte[] buffer. When override, call base.UpdateBuffer() after write your code
             </summary>
         </member>
-        <member name="M:LiteDB.Engine.BasePage.MarkAsEmtpy">
+        <member name="M:LiteDB.Engine.BasePage.MarkAsEmpty">
             <summary>
             Change current page to Empty page - fix variables and buffer (DO NOT change PageID)
             </summary>

@@ -26,10 +26,10 @@ Class DataHash {
 
     # Public Properties
     [string]$Hash
-    [System.Collections.Generic.HashSet[string]]$IgnoreFields
     [string]$HashAlgorithm = [DataHashAlgorithmType]::SHA256
-
+    
     # Private Properties
+    [System.Collections.Generic.HashSet[string]]$_ignoreFields
     hidden [System.Collections.Generic.HashSet[Type]]$_typeMappers
     hidden [System.Collections.Generic.HashSet[object]]$_visited
 
@@ -57,7 +57,7 @@ Class DataHash {
     DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields) {
         try {
             $this._resetVisited()
-            $this.IgnoreFields = $IgnoreFields
+            $this._ignoreFields = $IgnoreFields
             $this.Digest($InputObject, [DataHashAlgorithmType]::SHA256)
         } catch {
             throw "[DataHash]::Constructor: Error while initializing DataHash - $_"
@@ -67,7 +67,7 @@ Class DataHash {
     DataHash([Object]$InputObject, [System.Collections.Generic.HashSet[string]]$IgnoreFields, [string]$HashAlgorithm) { 
         try {
             $this._resetVisited()
-            $this.IgnoreFields = $IgnoreFields
+            $this._ignoreFields = $IgnoreFields
 
             if ([System.Enum]::IsDefined([DataHashAlgorithmType], $HashAlgorithm)) {
                 $this.HashAlgorithm = $HashAlgorithm
@@ -91,6 +91,50 @@ Class DataHash {
         $this.Hash = $this._digest($InputObject, $HashAlgorithm)
     }
 
+    [System.Collections.Generic.HashSet[string]] AddIgnoreField([string]$Ignore) {
+        $this._ignoreFields.Add($Ignore)
+
+        $return = [System.Collections.Generic.HashSet[string]]::new()
+        $this._ignoreFields.ForEach({$return.Add($_)})
+        return $return
+    }
+
+    [System.Collections.Generic.HashSet[string]] AddIgnoreField([System.Collections.IList]$IgnoreFields) {
+        $IgnoreFields.ForEach({$this._ignoreFields.Add($_)})
+
+        $return = [System.Collections.Generic.HashSet[string]]::new()
+        $this._ignoreFields.ForEach({$return.Add($_)})
+        return $return
+    }
+
+    [System.Collections.Generic.HashSet[string]] GetIgnoreFields() {
+        $return = [System.Collections.Generic.HashSet[string]]::new()
+        $this._ignoreFields.ForEach({$return.Add($_)})
+        return $return
+    }
+    
+    [System.Collections.Generic.HashSet[string]] GetLiveIgnoreFieldsInternalObject() {
+        return $this._ignoreFields
+    }
+
+    [System.Collections.Generic.HashSet[string]] RemoveIgnoreField([string]$Ignore) {
+        $this._ignoreFields.Remove($Ignore)
+
+        $return = [System.Collections.Generic.HashSet[string]]::new()
+        $this._ignoreFields.ForEach({$return.Add($_)})
+        return $return
+    }
+
+    [System.Collections.Generic.HashSet[string]] RemoveIgnoreField([System.Collections.IList]$IgnoreFields) {
+        $IgnoreFields.ForEach({$this._ignoreFields.Remove($_)})
+
+        $return = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($field in $this._ignoreFields){
+            $return.Add($field)
+        }
+        return $return
+        
+    }
     #3 Private Methods
 
     ##4 Constructor Init Helpers
@@ -104,10 +148,10 @@ Class DataHash {
     }
 
     hidden [void] _initializeIgnoreFields() {
-        if ($null -eq $this.IgnoreFields) {
-            $this.IgnoreFields = [System.Collections.Generic.HashSet[string]]::new()
+        if ($null -eq $this._ignoreFields) {
+            $this._ignoreFields = [System.Collections.Generic.HashSet[string]]::new()
         } else {
-            $this.IgnoreFields.Clear()
+            $this._ignoreFields.Clear()
         }
     }
 
@@ -172,7 +216,7 @@ Class DataHash {
         if ($Dictionary -is [PSCustomObject]) {
             # Directly populate OrderedDictionary without extra copying
             foreach ($property in $Dictionary.PSObject.Properties | Sort-Object Name) {
-                if (-not $this.IgnoreFields.Contains($property.Name)) {
+                if (-not $this._ignoreFields.Contains($property.Name)) {
                     $normalizedDict[$property.Name] = $this._normalizeValue($property.Value)
                 }
             }
@@ -185,7 +229,7 @@ Class DataHash {
         $keys = if ($isOrdered) { $Dictionary.Keys } else { $Dictionary.Keys | Sort-Object { $_.ToString() } }
 
         foreach ($key in $keys) {
-            if (-not $this.IgnoreFields.Contains($key)) {
+            if (-not $this._ignoreFields.Contains($key)) {
                 $normalizedDict[$key] = $this._normalizeValue($Dictionary[$key])
             }
         }
