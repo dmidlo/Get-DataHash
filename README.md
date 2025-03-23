@@ -40,8 +40,9 @@ To achieve **stable, predictable message digests**, `DataHash` follows these key
 `DataHash` computes **message digests**—fixed-length fingerprints of structured data, designed for **tracking changes, caching, and deduplication**.  
 
 🔹 **Message digests are deterministic** → The same input will always produce the same output.  
-🔹 **They do not include cryptographic salt** → This is intentional for consistency in state tracking.  
-🔹 **They can be used in cryptographic workflows** → If needed, they can be **signed, encrypted, or combined with HMAC** for authentication.  
+🔹 **They do not include cryptographic salt** → This is intentional for consistency in state tracking.
+
+🛑 **They cannot be used in cryptographic workflows** →  But will be soon. I had to make a single compromise to prove out a couple other ideas and implement the LiteDB serializer.   Shower thoughts over the weekend made me realize that LiteDB and BSON as a serializer introduces a wrapper artifact to get the job done for non-dict like objects; scalars, etc...  this wrapper artifact could potentially represent a vector for reverse engineering if these digests are used for more than semantic and schema testing purposes.  The gen2 alogrithm has already solved this problem and LiteDB will be written out prior to a C# rewrite and will enable the objective of true integral identity verification of semi-resolved graphs of Powershell DTOs.
 
 This is not a **password hashing** tool, nor does it provide **message authentication** on its own. If you need to verify **authenticity and integrity in security-critical applications**, consider **HMAC (e.g., HMAC-SHA-256)** or **digital signatures**.  
 
